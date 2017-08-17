@@ -6,25 +6,45 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.view.MotionEvent;
-import android.view.View;
 import android.webkit.DownloadListener;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.widget.Toast;
 
-public class MainActivity extends AppCompatActivity implements View.OnTouchListener {
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLDecoder;
+
+public class MainActivity extends AppCompatActivity {
+
+    private String              dirPath;
+    private boolean             isDownloading                        = false;
+    private String  fileName             = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        dirPath = ConstState.MIP_ROOT_DIR + "/tmp/";
+        File file = new File(dirPath);
+        if (file != null && !file.exists())
+        {
+            file.mkdirs();
+        }
 
         WebView webView = (WebView) findViewById(R.id.webView);
         WebSettings webSettings = webView.getSettings();
@@ -39,20 +59,20 @@ public class MainActivity extends AppCompatActivity implements View.OnTouchListe
         webSettings.setDatabaseEnabled(true);
         webSettings.setUseWideViewPort(true);//设置此属性，可任意比例缩放
         webSettings.setLoadWithOverviewMode(true);
+        //webSettings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NARROW_COLUMNS);
 
-        webView.setOnTouchListener(this);
 
         webView.setWebViewClient(new MyWebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 // TODO Auto-generated method stub
-                Intent intent = new Intent(MainActivity.this, DetailActivity.class);
-                Bundle bundle=new Bundle();
-                bundle.putString("url", url);
-                intent.putExtras(bundle);
-                startActivity(intent);
+//                Intent intent = new Intent(MainActivity.this, DetailActivity.class);
+//                Bundle bundle=new Bundle();
+//                bundle.putString("url", url);
+//                intent.putExtras(bundle);
+//                startActivity(intent);
                 //MainActivity.this.finish();
-
+                view.loadUrl(url);
                 return true;
             }
         });
@@ -141,9 +161,11 @@ public class MainActivity extends AppCompatActivity implements View.OnTouchListe
             }
         });
         webView.setDownloadListener(new MyWebViewDownLoadListener());
+        //webView.loadUrl("http://221.195.199.172:8088/portal/index_blue.jsp");
+        webView.loadUrl("http://221.195.199.172:8088/portal/t");
         //webView.loadUrl("http://218.207.83.171:8088/portal/t/");
         //webView.loadUrl("http://218.92.115.51/portal/t/");
-        webView.loadUrl("https://www.baidu.com");
+//        webView.loadUrl("https://www.baidu.com");
     }
 
     @Override
@@ -169,30 +191,176 @@ public class MainActivity extends AppCompatActivity implements View.OnTouchListe
         super.onConfigurationChanged(newConfig);
     }
 
-    @Override
-    public boolean onTouch(View v, MotionEvent event) {
-        return false;
-    }
-
     private class MyWebViewDownLoadListener implements DownloadListener {
 
         @Override
-        public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype,
+        public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimetype,
                                     long contentLength) {
-            Uri uri = Uri.parse(url);
-            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-            if(mimetype.startsWith("image"))
-                intent.setType("image/*");
-            else if(mimetype.startsWith("video"))
-                intent.setType("video/*");
-            else if(mimetype.startsWith("audio"))
-                intent.setType("audio/*");
-            else if(mimetype.equals("application/pdf"))
-                intent.setType("application/pdf");
-            else
-                intent.setType("*/*");
-            startActivity(intent);
+//            Uri uri = Uri.parse(url);
+//            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+//            //intent.setType("*/*");
+//            startActivity(intent);
+
+            if (isDownloading)
+            {
+                Toast.makeText(MainActivity.this, "正在下载文件，请稍后！", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+
+
+
+            fileName = getFileName(url);
+
+            File filePath = new File(dirPath + fileName);
+            if (filePath != null && filePath.exists())
+            {
+                // startActivity(OpenFilesTool.getPdfFileIntent(filePath));
+                // openFile(dirPath + fileName);
+                filePath.delete();
+            }
+            // else
+            // {
+            Thread th = new Thread()
+            {
+                /**
+                 * 重载方法
+                 *
+                 * @author rqj
+                 */
+                @Override
+                public void run()
+                {
+                    // TODO Auto-generated method stub
+                    downloadFileWithUrl(url, dirPath + fileName);
+                    super.run();
+                }
+
+            };
+            th.start();
+            isDownloading = true;
+            //waitDialog.show(getSupportFragmentManager());
+            // }
         }
+    }
+
+    public String getFileName(String url)
+    {
+        String filename = "";
+
+        String[] arrs = url.split("&");
+        String fileNameArr = "";
+        if (arrs != null)
+        {
+            for (int i = 0; i < arrs.length; i++)
+            {
+                if (arrs[i].startsWith("filename="))
+                {
+
+                    fileNameArr = arrs[i];
+                    break;
+                }
+            }
+        }
+
+        int index_1 = fileNameArr.indexOf("=");
+        filename = fileNameArr.substring(index_1 + 1, fileNameArr.length());
+
+        try
+        {
+            filename = URLDecoder.decode(filename, "UTF-8");
+        }
+        catch (UnsupportedEncodingException e)
+        {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+        return filename;
+    }
+
+    public void createPath(File file) throws IOException {
+        if (file.exists())
+            file.delete();
+        File localFile = file.getParentFile();
+        if ((localFile != null) && (!localFile.exists()))
+            localFile.mkdirs();
+        //file.createNewFile();
+    }
+
+    Handler mDowanlodFileHandler = new Handler()
+    {
+
+        /**
+         * 重载方法
+         *
+         * @param msg
+         * @author rqj
+         */
+        @Override
+        public void handleMessage(Message msg)
+        {
+            // TODO Auto-generated method stub
+            //waitDialog.dismiss();
+            File file = new File(dirPath + fileName);
+            if (file != null && file.exists())
+            {
+                OpenFilesTool.openFileFun(MainActivity.this, file.getAbsolutePath()
+                        .trim()
+                        .toLowerCase());
+            }
+            super.handleMessage(msg);
+        }
+
+    };
+
+    private void downloadFileWithUrl(String paramString, String filePath)
+    {
+        try
+        {
+            URL localURL = new URL(paramString);
+            HttpURLConnection localHttpURLConnection = (HttpURLConnection)localURL.openConnection();
+            localHttpURLConnection.setConnectTimeout(30000);
+            localHttpURLConnection.setReadTimeout(30000);
+            InputStream localInputStream = localHttpURLConnection.getInputStream();
+            FileOutputStream localFileOutputStream = null;
+
+            File localFile1 = new File(filePath);
+            if (localFile1 != null)
+            {
+                createPath(localFile1);
+                localFileOutputStream = new FileOutputStream(localFile1);
+            }
+            byte[] arrayOfByte = new byte[1024];
+            while (true)
+            {
+                int i = localInputStream.read(arrayOfByte);
+                if (i == -1)
+                {
+                    localFileOutputStream.flush();
+                    localFileOutputStream.close();
+                    localInputStream.close();
+                    break;
+                }
+                else
+                {
+                    localFileOutputStream.write(arrayOfByte, 0, i);
+                }
+
+            }
+        }
+        catch (IOException localIOException)
+        {
+            localIOException.printStackTrace();
+        }
+        finally
+        {
+            isDownloading = false;
+            Message localMessage = new Message();
+            localMessage.what = 0;
+            mDowanlodFileHandler.sendMessage(localMessage);
+        }
+
     }
 
     private ValueCallback<Uri> mUploadMessage;

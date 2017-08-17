@@ -135,7 +135,7 @@ public class DetailActivity extends AppCompatActivity implements View.OnTouchLis
                 return true;
             }
         });
-        webView.setDownloadListener(new MyWebViewDownLoadListener());
+        //webView.setDownloadListener(new MyWebViewDownLoadListener());
         Bundle bundle = this.getIntent().getExtras();
         String url = bundle.getString("url");
         webView.loadUrl(url);
